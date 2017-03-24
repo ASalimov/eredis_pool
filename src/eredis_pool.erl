@@ -114,7 +114,18 @@ q(PoolName, Command) ->
 
 q(PoolName, Command, Timeout) ->
     poolboy:transaction(PoolName, fun(Worker) ->
-                                          eredis:q(Worker, Command, Timeout)
+                                          try
+                                            eredis:q(Worker, Command, Timeout)
+                                          catch
+                                            error:{timeout, Desc}->
+                                              error_logger:error_msg("eredis exception: timeout(~p): ~p", [Worker, Desc]),
+                                              erlang:exit(Worker, kill),
+                                              {error, timeout};
+                                            E:R->
+                                              error_logger:error_msg("eredis exception:  ~p(~p) ~p", [E, Worker, R]),
+                                              erlang:exit(Worker, kill),
+                                              {E, R}
+                                          end
                                   end).
 
 -spec qp(PoolName::atom(), Command::iolist(), Timeout::integer()) ->
