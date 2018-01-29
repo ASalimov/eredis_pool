@@ -20,9 +20,14 @@
 %% ===================================================================
 
 start_link() ->
-    {ok, Pools} = application:get_env(eredis_pool, pools),
-    {ok, GlobalOrLocal} = application:get_env(eredis_pool, global_or_local),
-    start_link(Pools, GlobalOrLocal).
+
+  {ok, Pools} = application:get_env(eredis_pool, pools),
+  {ok, RoutingPools} = application:get_env(eredis_pool, routing),
+  {ok, GlobalOrLocal} = application:get_env(eredis_pool, global_or_local),
+  Pools1 = create_new_redis_pools(Pools,RoutingPools,[]),
+  start_link(Pools1, GlobalOrLocal).
+
+
 
 start_link(Pools, GlobalOrLocal) ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, [Pools, GlobalOrLocal]).
@@ -82,3 +87,16 @@ init([Pools, GlobalOrLocal]) ->
     end, Pools),
 
     {ok, {SupFlags, PoolSpecs}}.
+
+create_new_redis_pools([{Name, Opt, Args}|Tail],RoutingPools,Acc)->
+  RoutingPool = proplists:get_value(Name,RoutingPools),
+  Acc1 = create_new_redis_pools1(Opt, Args, RoutingPool, {0,Acc}),
+  create_new_redis_pools(Tail,RoutingPools,Acc1);
+create_new_redis_pools([],_,Acc)->Acc.
+
+
+create_new_redis_pools1(Opt, Args, [Country| Tail], {Index,Acc})->
+  Name = utils:atom_append('redis_pool_', Country),
+  Args1 = [{database, Index}|Args],
+  create_new_redis_pools1(Opt, Args, Tail, {Index+1,[{Name,Opt,Args1 }|Acc]});
+create_new_redis_pools1(_Opt, _Args, [], {_,Acc})->Acc.
